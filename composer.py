@@ -56,13 +56,28 @@ class Composer:
         try:
             # Load voice audio
             voice_audio = AudioFileClip(voice_audio_path)
-
-            # Adjust video duration to match audio
+            
+            # FIX: Safely extend video duration without black frames
             if video_clip.duration < voice_audio.duration:
                 logger.warning(
-                    f"Video duration ({video_clip.duration}s) is less than audio ({voice_audio.duration}s). Extending video."
+                    f"Video duration ({video_clip.duration}s) is less than audio ({voice_audio.duration}s). "
+                    f"Extending video by looping final frame."
                 )
-                video_clip = video_clip.set_duration(voice_audio.duration)
+                # Loop the final frame instead of stretching
+                from moviepy.video.io.VideoFileClip import VideoFileClip
+                try:
+                    # Create extended clip by repeating/looping
+                    final_frame = video_clip.get_frame(video_clip.duration - 0.1)
+                    from moviepy.editor import ImageClip
+                    extend_clip = ImageClip(final_frame).set_duration(
+                        voice_audio.duration - video_clip.duration
+                    )
+                    from moviepy.editor import concatenate_videoclips
+                    video_clip = concatenate_videoclips([video_clip, extend_clip])
+                except Exception as e:
+                    logger.warning(f"Could not loop final frame: {e}. Using set_duration instead.")
+                    # Fallback: just set duration
+                    video_clip = video_clip.set_duration(voice_audio.duration)
 
             # Create audio composition
             if background_music_path and Path(background_music_path).exists():
@@ -93,6 +108,15 @@ class Composer:
         except Exception as e:
             logger.error(f"Error composing video with audio: {str(e)}")
             raise
+        finally:
+            # FIX: Always cleanup audio resources to prevent memory leaks
+            try:
+                if 'voice_audio' in locals() and voice_audio is not None:
+                    voice_audio.close()
+                if 'background_audio' in locals() and background_audio is not None:
+                    background_audio.close()
+            except Exception as cleanup_error:
+                logger.warning(f"Error closing audio clips: {cleanup_error}")
 
     def export_video(
         self,
@@ -112,7 +136,11 @@ class Composer:
 
         Returns:
             str: Path to exported video
+
+        Raises:
+            FileNotFoundError: If export fails to create file
         """
+        output_path = None
         try:
             output_path = self.output_dir / output_filename
 
@@ -128,12 +156,38 @@ class Composer:
                 progress_bar=progress_bar,
             )
 
-            logger.info(f"Video exported successfully: {output_path}")
+            # FIX: Validate that file was actually created
+            if not output_path.exists():
+                raise FileNotFoundError(
+                    f"Video export failed: Output file not created at {output_path}"
+                )
+            
+            file_size_mb = output_path.stat().st_size / (1024 * 1024)
+            if file_size_mb < 1:
+                raise ValueError(
+                    f"Video export created invalid file: Size is only {file_size_mb:.2f} MB"
+                )
+
+            logger.info(f"Video exported successfully: {output_path} ({file_size_mb:.2f} MB)")
             return str(output_path)
 
         except Exception as e:
             logger.error(f"Error exporting video: {str(e)}")
+            # Clean up partial/invalid file
+            if output_path and output_path.exists():
+                try:
+                    output_path.unlink()
+                    logger.info(f"Cleaned up invalid export file: {output_path}")
+                except Exception as cleanup_error:
+                    logger.warning(f"Could not clean up failed export: {cleanup_error}")
             raise
+        finally:
+            # FIX: Always cleanup video clip resource
+            try:
+                if video_clip is not None:
+                    video_clip.close()
+            except Exception as cleanup_error:
+                logger.warning(f"Error closing video clip: {cleanup_error}")
 
 
 def get_composer() -> Composer:
