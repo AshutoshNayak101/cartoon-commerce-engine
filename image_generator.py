@@ -1,6 +1,7 @@
 """
 Image Generator Module
 Handles image processing, resizing, and scene creation from product images.
+Windows Compatible - Works with Pillow 10.0.1+
 """
 
 from pathlib import Path
@@ -44,6 +45,18 @@ class ImageGenerator:
             logger.error(f"Error loading image: {str(e)}")
             raise
 
+    def _get_resample_filter(self):
+        """
+        Get the appropriate resample filter for PIL.
+        Windows-compatible implementation.
+        """
+        try:
+            # Try newer Pillow API (10.0.0+)
+            return Image.Resampling.LANCZOS
+        except AttributeError:
+            # Fallback for older Pillow versions
+            return Image.LANCZOS
+
     def resize_and_center(self, image: Image.Image) -> Image.Image:
         """
         Resize image to fit 9:16 aspect ratio with proper centering.
@@ -68,7 +81,8 @@ class ImageGenerator:
                 new_width = self.output_width
                 new_height = int(new_width / img_aspect)
 
-            image = image.resize((new_width, new_height), Image.Resampling.LANCZOS)
+            resample_filter = self._get_resample_filter()
+            image = image.resize((new_width, new_height), resample_filter)
 
             # Create canvas and center image
             canvas = Image.new("RGB", (self.output_width, self.output_height), (0, 0, 0))
@@ -103,7 +117,7 @@ class ImageGenerator:
 
                 # Save processed image
                 output_path = self.scenes_dir / f"scene_{idx}.png"
-                img.save(str(output_path))
+                img.save(str(output_path), quality=95)
                 prepared_images.append(str(output_path))
 
                 logger.info(f"Scene {idx} prepared: {output_path}")
