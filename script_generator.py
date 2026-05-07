@@ -2,6 +2,7 @@
 Script Generator Module
 Generates funny, engaging cartoon dialogue between Robot Cat and Boy
 for product showcase reels.
+Windows Compatible Implementation
 """
 
 import random
