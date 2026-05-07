@@ -1,10 +1,16 @@
 """
 Background Music Module
 Manages background music for video composition.
+Windows Compatible Implementation
 """
 
 import logging
 from pathlib import Path
+import sys
+
+# Add current directory to path for relative imports
+sys.path.insert(0, str(Path(__file__).parent))
+
 from config import MUSIC_DIR
 
 logging.basicConfig(level=logging.INFO)
@@ -15,6 +21,7 @@ class BackgroundMusicManager:
     """
     Manages background music for video.
     Provides cinematic background music tracks.
+    Gracefully handles missing music files.
     """
 
     def __init__(self):
@@ -35,6 +42,7 @@ class BackgroundMusicManager:
             music_files = list(self.music_dir.glob("*.mp3")) + list(self.music_dir.glob("*.wav"))
             if music_files:
                 return str(music_files[0])
+            logger.info("No background music files found. Will use voice-only mode.")
             return None
 
         except Exception as e:
