@@ -44,6 +44,20 @@ class GenerationPipeline:
             logger.error(f"Failed to initialize pipeline: {e}")
             raise
 
+    def _cleanup_clips(self, clips_to_cleanup: List[any]) -> None:
+        """
+        FIX: Properly cleanup all video/audio clips to prevent memory leaks.
+        
+        Args:
+            clips_to_cleanup (List): List of MoviePy clip objects to cleanup
+        """
+        for clip in clips_to_cleanup:
+            try:
+                if clip is not None and hasattr(clip, 'close'):
+                    clip.close()
+            except Exception as e:
+                logger.warning(f"Error closing clip: {e}")
+
     def execute(
         self,
         product_name: str,
@@ -61,6 +75,9 @@ class GenerationPipeline:
         Returns:
             str: Path to final video file
         """
+        # FIX: Track all clips for proper cleanup
+        clips_for_cleanup = []
+        
         try:
             # Validate inputs
             if not product_name or not image_paths:
@@ -83,6 +100,11 @@ class GenerationPipeline:
 
             voice_path = self.voice_gen.generate_voice(narration_text, "narration.mp3")
             audio_duration = self.voice_gen.get_audio_duration(voice_path)
+            
+            # FIX: Validate audio duration to prevent downstream errors
+            if audio_duration <= 0:
+                raise ValueError(f"Invalid audio duration: {audio_duration}s")
+                
             logger.info(f"Voice generated: {voice_path} (Duration: {audio_duration:.2f}s)")
 
             # Step 3: Process Product Images
@@ -91,6 +113,8 @@ class GenerationPipeline:
                 progress_callback("Processing images...", 45)
 
             prepared_images = self.image_gen.prepare_scene_images(image_paths)
+            if not prepared_images:
+                raise ValueError("No images were successfully prepared")
             logger.info(f"Processed {len(prepared_images)} images")
 
             # Step 4: Create Animated Scenes
@@ -99,7 +123,11 @@ class GenerationPipeline:
                 progress_callback("Creating animated scenes...", 60)
 
             scene_clips = self.animator.create_scene_clips(prepared_images)
+            # FIX: Track clips for cleanup
+            clips_for_cleanup.extend(scene_clips)
+            
             video_clip = self.animator.compose_clips(scene_clips)
+            clips_for_cleanup.append(video_clip)
             logger.info(f"Animated {len(scene_clips)} scenes into video")
 
             # Step 5: Generate Subtitles
@@ -109,6 +137,7 @@ class GenerationPipeline:
 
             subtitle_clips = self.subtitle_gen.create_subtitle_clips(script_lines, audio_duration)
             video_with_subtitles = self.subtitle_gen.overlay_subtitles(video_clip, subtitle_clips)
+            clips_for_cleanup.append(video_with_subtitles)
             logger.info(f"Added {len(subtitle_clips)} subtitle clips")
 
             # Step 6: Add Background Music
@@ -122,6 +151,7 @@ class GenerationPipeline:
                 voice_path,
                 music_path,
             )
+            clips_for_cleanup.append(final_video)
             logger.info("Audio mixed with narration")
 
             # Step 7: Export Final Video
@@ -145,6 +175,11 @@ class GenerationPipeline:
         except Exception as e:
             logger.error(f"Pipeline execution failed: {str(e)}")
             raise
+        finally:
+            # FIX: Always cleanup clips to prevent memory leaks
+            logger.info(f"Cleaning up {len(clips_for_cleanup)} clips from memory...")
+            self._cleanup_clips(clips_for_cleanup)
+            logger.info("Pipeline cleanup completed")
 
 
 def get_pipeline() -> GenerationPipeline:
