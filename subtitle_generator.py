@@ -29,13 +29,21 @@ class SubtitleGenerator:
         self.height = VIDEO_CONFIG["height"]
         self.font_size = ANIMATION_CONFIG["subtitle_font_size"]
         self.subtitle_color = ANIMATION_CONFIG["subtitle_color"]
+        self.min_subtitle_duration = 0.5  # Minimum duration to ensure visibility
 
     def _create_text_clip_safe(self, text: str, duration: float, start_time: float) -> any:
         """
         Safely create a TextClip with MoviePy 1.0.3.
         Handles font availability gracefully.
+        
+        FIX: Ensures duration is always safe (minimum 0.5s for visibility)
         """
         try:
+            # FIX: Ensure minimum duration for visibility
+            if duration <= 0:
+                logger.warning(f"Invalid subtitle duration: {duration}. Using minimum: {self.min_subtitle_duration}s")
+                duration = self.min_subtitle_duration
+            
             # Try with specific font
             txt_clip = TextClip(
                 text,
@@ -92,8 +100,13 @@ class SubtitleGenerator:
                 logger.warning("No script lines provided for subtitles")
                 return []
 
+            # FIX: Prevent divide-by-zero when audio_duration is invalid
+            if audio_duration <= 0:
+                logger.warning(f"Invalid audio duration: {audio_duration}. Cannot create subtitles.")
+                return []
+
             subtitle_clips = []
-            time_per_line = audio_duration / len(script_lines) if script_lines else 0
+            time_per_line = audio_duration / len(script_lines)
 
             for idx, line in enumerate(script_lines):
                 try:
@@ -104,15 +117,16 @@ class SubtitleGenerator:
                     clean_text = dialogue.replace("🤖 Robot Cat: ", "").replace("👦 Boy: ", "")
                     clean_text = clean_text.strip()
                     
-                    if not clean_text:
-                        logger.warning(f"Empty dialogue at line {idx}")
-                        continue
-
+                    # FIX: Handle empty subtitle with fallback text
+                    if not clean_text or len(clean_text) == 0:
+                        logger.warning(f"Empty dialogue at line {idx}. Using placeholder.")
+                        clean_text = f"[Scene {idx + 1}]"
+                    
                     # Calculate timing
                     start_time = idx * time_per_line
                     duration = time_per_line
 
-                    # Create text clip safely
+                    # Create text clip safely (handles minimum duration)
                     txt_clip = self._create_text_clip_safe(clean_text, duration, start_time)
 
                     subtitle_clips.append(txt_clip)
