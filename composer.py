@@ -2,10 +2,16 @@
 Composer Module
 Handles final video composition with audio, music, and export.
 Uses MoviePy 1.0.3 syntax.
+Windows Compatible Implementation
 """
 
 import logging
 from pathlib import Path
+import sys
+
+# Add current directory to path for relative imports
+sys.path.insert(0, str(Path(__file__).parent))
+
 from moviepy.editor import (
     VideoFileClip,
     AudioFileClip,
@@ -71,10 +77,11 @@ class Composer:
 
                     # Composite audio
                     final_audio = CompositeAudioClip([voice_audio, background_audio])
-                except:
-                    logger.warning("Background music loading failed. Using voice only.")
+                except Exception as music_error:
+                    logger.warning(f"Background music loading failed: {music_error}. Using voice only.")
                     final_audio = voice_audio
             else:
+                logger.info("No background music file provided. Using voice only.")
                 final_audio = voice_audio
 
             # Set audio to video
@@ -111,7 +118,7 @@ class Composer:
 
             logger.info(f"Exporting video to: {output_path}")
 
-            # Export video
+            # Export video with Windows-compatible parameters
             video_clip.write_videofile(
                 str(output_path),
                 fps=self.fps,
