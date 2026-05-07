@@ -2,11 +2,16 @@
 Pipeline Module
 Orchestrates the entire workflow from input to final video export.
 Implements the n8n-style modular automation pipeline.
+Windows Compatible - MoviePy 1.0.3
 """
 
 import logging
 from pathlib import Path
 from typing import Dict, List
+import sys
+
+sys.path.insert(0, str(Path(__file__).parent))
+
 from script_generator import get_script_generator
 from voice_generator import get_voice_generator
 from image_generator import get_image_generator
@@ -22,16 +27,22 @@ logger = logging.getLogger(__name__)
 class GenerationPipeline:
     """
     Orchestrates the complete reel generation workflow.
+    7-step process: Script → Voice → Images → Animation → Subtitles → Music → Export
     """
 
     def __init__(self):
-        self.script_gen = get_script_generator()
-        self.voice_gen = get_voice_generator()
-        self.image_gen = get_image_generator()
-        self.animator = get_animator()
-        self.subtitle_gen = get_subtitle_generator()
-        self.composer = get_composer()
-        self.music_manager = get_background_music_manager()
+        try:
+            self.script_gen = get_script_generator()
+            self.voice_gen = get_voice_generator()
+            self.image_gen = get_image_generator()
+            self.animator = get_animator()
+            self.subtitle_gen = get_subtitle_generator()
+            self.composer = get_composer()
+            self.music_manager = get_background_music_manager()
+            logger.info("Pipeline initialized successfully")
+        except Exception as e:
+            logger.error(f"Failed to initialize pipeline: {e}")
+            raise
 
     def execute(
         self,
@@ -51,6 +62,10 @@ class GenerationPipeline:
             str: Path to final video file
         """
         try:
+            # Validate inputs
+            if not product_name or not image_paths:
+                raise ValueError("Product name and image paths are required")
+
             # Step 1: Generate Script
             logger.info("Step 1: Generating dialogue script...")
             if progress_callback:
@@ -107,7 +122,7 @@ class GenerationPipeline:
                 voice_path,
                 music_path,
             )
-            logger.info("Background music mixed with narration")
+            logger.info("Audio mixed with narration")
 
             # Step 7: Export Final Video
             logger.info("Step 7: Exporting final video...")

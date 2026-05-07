@@ -1,15 +1,20 @@
 """
 Main Streamlit Application
 AI Cartoon Commerce Studio Lite - Instagram Reel Generator
+Windows Compatible Implementation
 
-This is the main entry point for the application.
 Run with: python -m streamlit run app.py
 """
 
 import streamlit as st
 from pathlib import Path
-from pipeline import get_pipeline
 import logging
+import sys
+
+sys.path.insert(0, str(Path(__file__).parent))
+
+from pipeline import get_pipeline
+from config import UPLOADS_DIR
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -66,9 +71,15 @@ def initialize_session_state():
     Initialize session state variables.
     """
     if "pipeline" not in st.session_state:
-        st.session_state.pipeline = get_pipeline()
+        try:
+            st.session_state.pipeline = get_pipeline()
+        except Exception as e:
+            logger.error(f"Failed to initialize pipeline: {e}")
+            st.error(f"Failed to initialize pipeline: {e}")
+            return False
     if "output_video_path" not in st.session_state:
         st.session_state.output_video_path = None
+    return True
 
 
 def validate_inputs(product_name: str, uploaded_files: list) -> tuple:
@@ -104,8 +115,6 @@ def save_uploaded_files(uploaded_files: list) -> list:
         List of saved file paths
     """
     try:
-        from config import UPLOADS_DIR
-
         saved_paths = []
         UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -193,21 +202,32 @@ def display_output_section(video_path: str = None):
         st.success("✅ Reel generated successfully!")
 
         with st.expander("📺 Watch Preview", expanded=True):
-            st.video(video_path)
+            try:
+                st.video(video_path)
+            except Exception as e:
+                logger.error(f"Error displaying video: {e}")
+                st.error(f"Error displaying video preview: {e}")
 
         # Download button
-        with open(video_path, "rb") as video_file:
-            st.download_button(
-                label="📥 Download Reel (MP4)",
-                data=video_file.read(),
-                file_name="cartoon_commerce_reel.mp4",
-                mime="video/mp4",
-                use_container_width=True,
-            )
+        try:
+            with open(video_path, "rb") as video_file:
+                st.download_button(
+                    label="📥 Download Reel (MP4)",
+                    data=video_file.read(),
+                    file_name="cartoon_commerce_reel.mp4",
+                    mime="video/mp4",
+                    use_container_width=True,
+                )
+        except Exception as e:
+            logger.error(f"Error creating download button: {e}")
+            st.error(f"Error creating download: {e}")
 
         # Video info
-        video_size_mb = Path(video_path).stat().st_size / (1024 * 1024)
-        st.info(f"📊 Video Size: {video_size_mb:.2f} MB | Format: MP4 (1080x1920) | Codec: H.264")
+        try:
+            video_size_mb = Path(video_path).stat().st_size / (1024 * 1024)
+            st.info(f"📊 Video Size: {video_size_mb:.2f} MB | Format: MP4 (1080x1920) | Codec: H.264")
+        except Exception as e:
+            logger.warning(f"Could not get video info: {e}")
     else:
         st.info("🎬 Generated reels will appear here. Start by uploading product images!")
 
@@ -217,7 +237,9 @@ def main():
     Main application logic.
     """
     # Initialize session state
-    initialize_session_state()
+    if not initialize_session_state():
+        st.error("Failed to initialize application. Please refresh the page.")
+        return
 
     # Display header
     display_header()
@@ -244,8 +266,13 @@ def main():
 
             # Save uploaded files
             with st.spinner("💾 Saving uploaded files..."):
-                saved_image_paths = save_uploaded_files(uploaded_files)
-                st.success(f"Saved {len(saved_image_paths)} images")
+                try:
+                    saved_image_paths = save_uploaded_files(uploaded_files)
+                    st.success(f"Saved {len(saved_image_paths)} images")
+                except Exception as e:
+                    st.error(f"Error saving files: {e}")
+                    logger.error(f"File save error: {e}")
+                    return
 
             # Create progress placeholder
             progress_placeholder = st.empty()
@@ -269,6 +296,7 @@ def main():
                 st.session_state.output_video_path = output_path
                 progress_placeholder.success("✅ Reel generation completed!")
                 status_placeholder.empty()
+                st.rerun()
 
             except Exception as e:
                 st.error(f"❌ Error during generation: {str(e)}")
@@ -305,7 +333,7 @@ def main():
             - **Backend**: Python
             - **Video**: MoviePy 1.0.3
             - **Voice**: gTTS
-            - **Images**: Pillow
+            - **Images**: Pillow 9.5.0+
             """
         )
 

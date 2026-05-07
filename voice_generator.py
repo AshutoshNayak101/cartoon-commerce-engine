@@ -1,11 +1,16 @@
 """
 Voice Generator Module
 Converts narration text to speech using gTTS (Google Text-to-Speech)
+Windows Compatible
 """
 
 from pathlib import Path
 from gtts import gTTS
 import logging
+import sys
+
+sys.path.insert(0, str(Path(__file__).parent))
+
 from config import VOICE_CONFIG, VOICES_DIR
 
 logging.basicConfig(level=logging.INFO)
@@ -41,7 +46,7 @@ class VoiceGenerator:
 
             output_path = self.output_dir / filename
 
-            # Generate speech
+            # Generate speech with gTTS
             tts = gTTS(
                 text=text,
                 lang=self.language,
@@ -62,7 +67,7 @@ class VoiceGenerator:
     def get_audio_duration(self, filepath: str) -> float:
         """
         Calculate the duration of an audio file.
-        Uses moviepy to get duration without loading entire file.
+        Uses moviepy to get duration.
 
         Args:
             filepath (str): Path to audio file
@@ -73,7 +78,7 @@ class VoiceGenerator:
         try:
             from moviepy.editor import AudioFileClip
 
-            audio = AudioFileClip(filepath)
+            audio = AudioFileClip(str(filepath))
             duration = audio.duration
             audio.close()
             return duration
