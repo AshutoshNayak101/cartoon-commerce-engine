@@ -47,6 +47,56 @@ class Animator:
             from PIL import Image
             return Image.LANCZOS
 
+    def _normalize_frame_to_uint8(self, frame: np.ndarray) -> np.ndarray:
+        """
+        Safely normalize frame array to uint8 for PIL.Image.fromarray().
+        Handles both float32 (0.0-1.0 range) and uint8 (0-255 range).
+        
+        Args:
+            frame (np.ndarray): Input frame array
+            
+        Returns:
+            np.ndarray: Normalized uint8 frame safe for PIL
+        """
+        try:
+            if frame is None or frame.size == 0:
+                logger.warning("Invalid frame: None or empty array")
+                return None
+                
+            # Already uint8 - validate range
+            if frame.dtype == np.uint8:
+                return frame
+            
+            # Float type - determine range and normalize
+            if np.issubdtype(frame.dtype, np.floating):
+                # Check actual range to determine if 0-1 or 0-255
+                frame_min = frame.min()
+                frame_max = frame.max()
+                
+                if frame_max <= 1.0:
+                    # Range is 0.0-1.0, multiply by 255
+                    frame = (np.clip(frame, 0.0, 1.0) * 255).astype(np.uint8)
+                else:
+                    # Range is 0-255, just clip and convert
+                    frame = np.clip(frame, 0, 255).astype(np.uint8)
+                return frame
+            
+            # Integer type (int32, int64, etc.) - assume 0-255 range
+            if np.issubdtype(frame.dtype, np.integer):
+                return np.clip(frame, 0, 255).astype(np.uint8)
+            
+            # Unknown type - attempt conversion via float
+            logger.warning(f"Unknown frame dtype: {frame.dtype}. Attempting float conversion.")
+            frame_float = frame.astype(np.float32)
+            if frame_float.max() <= 1.0:
+                return (np.clip(frame_float, 0.0, 1.0) * 255).astype(np.uint8)
+            else:
+                return np.clip(frame_float, 0, 255).astype(np.uint8)
+                
+        except Exception as e:
+            logger.error(f"Error normalizing frame: {e}")
+            raise
+
     def create_zoom_effect(self, image_path: str) -> any:
         """
         Create a cinematic zoom effect on an image.
@@ -76,11 +126,13 @@ class Animator:
                     # Get frame at current time
                     frame = get_frame(t)
                     
-                    # Ensure frame is uint8
-                    if frame.dtype != np.uint8:
-                        frame = np.clip(frame * 255, 0, 255).astype(np.uint8)
+                    # CRITICAL FIX: Normalize frame to safe uint8 format
+                    frame = self._normalize_frame_to_uint8(frame)
+                    if frame is None:
+                        logger.error("Frame normalization failed, returning original")
+                        return get_frame(t)
                     
-                    # Convert to PIL Image
+                    # Convert to PIL Image - now guaranteed uint8
                     pil_img = Image.fromarray(frame, mode='RGB')
                     
                     # Calculate zoom progress
