@@ -1,12 +1,14 @@
 """
 Configuration Module
 Defines all constants and settings for the AI Cartoon Commerce Studio Lite
+Windows and Cross-Platform Compatible
 """
 
 import os
+import sys
 from pathlib import Path
 
-# Project Structure
+# Project Structure - Windows Compatible
 PROJECT_ROOT = Path(__file__).parent
 ASSETS_DIR = PROJECT_ROOT / "assets"
 UPLOADS_DIR = ASSETS_DIR / "uploads"
@@ -17,7 +19,10 @@ MUSIC_DIR = ASSETS_DIR / "music"
 
 # Create directories if they don't exist
 for directory in [UPLOADS_DIR, SCENES_DIR, OUTPUT_DIR, VOICES_DIR, MUSIC_DIR]:
-    directory.mkdir(parents=True, exist_ok=True)
+    try:
+        directory.mkdir(parents=True, exist_ok=True)
+    except Exception as e:
+        print(f"Warning: Could not create directory {directory}: {e}")
 
 # Video Configuration
 VIDEO_CONFIG = {
@@ -79,3 +84,8 @@ LOGGING_CONFIG = {
     "level": "INFO",
     "format": "%(asctime)s - %(name)s - %(levelname)s - %(message)s",
 }
+
+# Platform Detection
+IS_WINDOWS = sys.platform.startswith("win")
+IS_MAC = sys.platform.startswith("darwin")
+IS_LINUX = sys.platform.startswith("linux")
