@@ -7,7 +7,7 @@ Windows Compatible - MoviePy 1.0.3
 
 import logging
 from pathlib import Path
-from typing import Dict, List
+from typing import Any, Dict, List
 import sys
 
 sys.path.insert(0, str(Path(__file__).parent))
@@ -44,7 +44,7 @@ class GenerationPipeline:
             logger.error(f"Failed to initialize pipeline: {e}")
             raise
 
-    def _cleanup_clips(self, clips_to_cleanup: List[any]) -> None:
+    def _cleanup_clips(self, clips_to_cleanup: List[Any]) -> None:
         """
         FIX: Properly cleanup all video/audio clips to prevent memory leaks.
         

@@ -7,7 +7,7 @@ Windows Compatible - Pillow 9.5.0+ compatible
 
 import logging
 from pathlib import Path
-from typing import List
+from typing import Any, List
 import numpy as np
 import sys
 
@@ -97,7 +97,7 @@ class Animator:
             logger.error(f"Error normalizing frame: {e}")
             raise
 
-    def create_zoom_effect(self, image_path: str) -> any:
+    def create_zoom_effect(self, image_path: str) -> Any:
         """
         Create a cinematic zoom effect on an image.
         Uses MoviePy 1.0.3 syntax.
@@ -175,7 +175,7 @@ class Animator:
             logger.error(f"Error creating zoom effect: {str(e)}")
             raise
 
-    def create_scene_clips(self, image_paths: List[str]) -> List[any]:
+    def create_scene_clips(self, image_paths: List[str]) -> List[Any]:
         """
         Create animated clips for all images.
 
@@ -206,7 +206,7 @@ class Animator:
             logger.error(f"Error creating scene clips: {str(e)}")
             raise
 
-    def compose_clips(self, clips: List[any]) -> any:
+    def compose_clips(self, clips: List[Any]) -> Any:
         """
         Concatenate all clips into a single video.
         Uses MoviePy 1.0.3 syntax.
