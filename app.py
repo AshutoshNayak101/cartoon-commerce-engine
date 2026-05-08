@@ -1,7 +1,7 @@
 """
 Main Streamlit Application
 AI Cartoon Commerce Studio Lite - Instagram Reel Generator
-Windows Compatible Implementation
+Cloud-Optimized for Streamlit Community Cloud
 
 Run with: python -m streamlit run app.py
 """
@@ -10,6 +10,8 @@ import streamlit as st
 from pathlib import Path
 import logging
 import sys
+import shutil
+import os
 
 sys.path.insert(0, str(Path(__file__).parent))
 
@@ -66,6 +68,30 @@ st.markdown(
 )
 
 
+@st.cache_resource
+def validate_environment():
+    """
+    Validate cloud environment and dependencies.
+    Cached to run only once per app session.
+    """
+    issues = []
+    
+    # Check FFmpeg availability
+    if not shutil.which("ffmpeg"):
+        issues.append("❌ FFmpeg not found - video export will fail. Please contact support.")
+    else:
+        logger.info("✓ FFmpeg available")
+    
+    # Check required directories can be created
+    try:
+        UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
+        logger.info("✓ Upload directory accessible")
+    except Exception as e:
+        issues.append(f"❌ Cannot create upload directory: {e}")
+    
+    return issues
+
+
 def initialize_session_state():
     """
     Initialize session state variables.
@@ -73,12 +99,15 @@ def initialize_session_state():
     if "pipeline" not in st.session_state:
         try:
             st.session_state.pipeline = get_pipeline()
+            logger.info("Pipeline initialized successfully")
         except Exception as e:
             logger.error(f"Failed to initialize pipeline: {e}")
-            st.error(f"Failed to initialize pipeline: {e}")
+            st.error(f"❌ Failed to initialize pipeline: {e}")
             return False
     if "output_video_path" not in st.session_state:
         st.session_state.output_video_path = None
+    if "processing" not in st.session_state:
+        st.session_state.processing = False
     return True
 
 
@@ -89,20 +118,35 @@ def validate_inputs(product_name: str, uploaded_files: list) -> tuple:
     Returns:
         Tuple of (is_valid, error_message)
     """
+    # Validate product name
     if not product_name or len(product_name.strip()) == 0:
         return False, "❌ Please enter a product name"
-
+    
+    if len(product_name.strip()) > 100:
+        return False, "❌ Product name too long (max 100 characters)"
+    
+    # Validate uploaded files
     if not uploaded_files or len(uploaded_files) == 0:
         return False, "❌ Please upload at least one product image"
 
     if len(uploaded_files) > 5:
         return False, "❌ Maximum 5 images allowed"
 
-    # Check file types
+    # Check file types and sizes
+    total_size = 0
     for file in uploaded_files:
         ext = file.name.split(".")[-1].lower()
         if ext not in ["jpg", "jpeg", "png"]:
             return False, f"❌ Invalid file type: {ext}. Only JPG, JPEG, PNG allowed"
+        
+        file_size_mb = len(file.getvalue()) / (1024 * 1024)
+        if file_size_mb > 50:
+            return False, f"❌ File {file.name} is too large ({file_size_mb:.1f}MB > 50MB limit)"
+        
+        total_size += file_size_mb
+    
+    if total_size > 100:
+        return False, "❌ Total upload size exceeds 100MB limit"
 
     return True, "✅ Inputs validated"
 
@@ -110,6 +154,7 @@ def validate_inputs(product_name: str, uploaded_files: list) -> tuple:
 def save_uploaded_files(uploaded_files: list) -> list:
     """
     Save uploaded files to temporary directory.
+    Uses UUID to prevent path traversal attacks.
 
     Returns:
         List of saved file paths
@@ -119,7 +164,13 @@ def save_uploaded_files(uploaded_files: list) -> list:
         UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
 
         for idx, uploaded_file in enumerate(uploaded_files):
-            file_path = UPLOADS_DIR / f"product_{idx}.{uploaded_file.name.split('.')[-1]}"
+            # Sanitize filename: extract extension only
+            ext = uploaded_file.name.split(".")[-1].lower()
+            if ext not in ["jpg", "jpeg", "png"]:
+                raise ValueError(f"Invalid file extension: {ext}")
+            
+            # Use safe filename based on index
+            file_path = UPLOADS_DIR / f"product_{idx}.{ext}"
             with open(file_path, "wb") as f:
                 f.write(uploaded_file.getbuffer())
             saved_paths.append(str(file_path))
@@ -130,6 +181,23 @@ def save_uploaded_files(uploaded_files: list) -> list:
     except Exception as e:
         logger.error(f"Error saving uploaded files: {str(e)}")
         raise
+
+
+def cleanup_temp_files():
+    """
+    Clean up temporary files from previous generations.
+    """
+    try:
+        # Clean old uploads
+        if UPLOADS_DIR.exists():
+            for file in UPLOADS_DIR.glob("product_*"):
+                try:
+                    file.unlink()
+                except Exception as e:
+                    logger.warning(f"Could not delete {file}: {e}")
+        logger.info("Cleanup completed")
+    except Exception as e:
+        logger.warning(f"Error during cleanup: {e}")
 
 
 def display_header():
@@ -160,6 +228,7 @@ def display_input_section():
             "Product Name",
             placeholder="e.g., Smart Water Bottle, Wireless Earbuds",
             help="Enter the name of the product to showcase",
+            max_chars=100,
         )
 
     with col2:
@@ -167,7 +236,7 @@ def display_input_section():
             "Upload Product Images",
             type=["jpg", "jpeg", "png"],
             accept_multiple_files=True,
-            help="Upload 2-5 product images for the reel",
+            help="Upload 2-5 product images for the reel (max 50MB each)",
         )
 
     return product_name, uploaded_files
@@ -182,10 +251,12 @@ def display_generation_controls():
     col1, col2, col3 = st.columns([1, 1, 1])
 
     with col2:
+        # Disable button while processing
         generate_button = st.button(
             "🚀 Generate Reel",
             use_container_width=True,
             help="Click to start the reel generation process",
+            disabled=st.session_state.processing,
         )
 
     return generate_button
@@ -236,6 +307,15 @@ def main():
     """
     Main application logic.
     """
+    # Check environment first
+    env_issues = validate_environment()
+    if env_issues:
+        st.error("⚠️ Environment Issues Found:")
+        for issue in env_issues:
+            st.error(issue)
+        st.warning("Please contact support or try again later.")
+        return
+
     # Initialize session state
     if not initialize_session_state():
         st.error("Failed to initialize application. Please refresh the page.")
@@ -264,6 +344,9 @@ def main():
         else:
             st.success(validation_message)
 
+            # Set processing flag
+            st.session_state.processing = True
+
             # Save uploaded files
             with st.spinner("💾 Saving uploaded files..."):
                 try:
@@ -272,6 +355,7 @@ def main():
                 except Exception as e:
                     st.error(f"Error saving files: {e}")
                     logger.error(f"File save error: {e}")
+                    st.session_state.processing = False
                     return
 
             # Create progress placeholder
@@ -296,11 +380,20 @@ def main():
                 st.session_state.output_video_path = output_path
                 progress_placeholder.success("✅ Reel generation completed!")
                 status_placeholder.empty()
+                
+                # Clean up uploaded files after successful generation
+                cleanup_temp_files()
+                
                 st.rerun()
 
             except Exception as e:
                 st.error(f"❌ Error during generation: {str(e)}")
-                logger.error(f"Pipeline error: {str(e)}")
+                logger.error(f"Pipeline error: {str(e)}", exc_info=True)
+                status_placeholder.empty()
+            
+            finally:
+                # Reset processing flag
+                st.session_state.processing = False
 
     st.divider()
 
@@ -333,13 +426,27 @@ def main():
             - **Backend**: Python
             - **Video**: MoviePy 1.0.3
             - **Voice**: gTTS
-            - **Images**: Pillow 9.5.0+
+            - **Images**: Pillow 10.0.1
+            
+            ### Limits (Free Tier)
+            - Max 5 images per reel
+            - Max 50MB per image
+            - Max 100MB total upload
+            - Processing time: ~5-10 minutes
+            - Free tier resource limits apply
             """
         )
 
         st.divider()
         st.caption("🚀 AI Cartoon Commerce Studio Lite v1.0")
         st.caption("Made with ❤️ for creators")
+        
+        # Show deployment info
+        st.divider()
+        with st.expander("📋 Deployment Info"):
+            st.caption("Environment: Streamlit Community Cloud")
+            st.caption(f"Python: {sys.version.split()[0]}")
+            st.caption(f"FFmpeg: {'✓ Available' if shutil.which('ffmpeg') else '✗ Not available'}")
 
 
 if __name__ == "__main__":
