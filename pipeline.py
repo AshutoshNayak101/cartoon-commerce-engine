@@ -7,18 +7,16 @@ Windows Compatible - MoviePy 1.0.3
 
 import logging
 from pathlib import Path
-from typing import Dict, List
+from typing import Dict, List, Any
 import sys
 
 sys.path.insert(0, str(Path(__file__).parent))
 
 from script_generator import get_script_generator
-from voice_generator import get_voice_generator
-from image_generator import get_image_generator
 from animator import get_animator
 from subtitle_generator import get_subtitle_generator
 from composer import get_composer
-from background_music import get_background_music_manager
+from config import VIDEO_CONFIG, ANIMATION_CONFIG, OUTPUT_DIR, AUDIO_CONFIG
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -26,30 +24,24 @@ logger = logging.getLogger(__name__)
 
 class GenerationPipeline:
     """
-    Orchestrates the complete reel generation workflow.
-    7-step process: Script → Voice → Images → Animation → Subtitles → Music → Export
+    Main pipeline orchestrator.
+    Coordinates script generation → animation → subtitle → audio → export.
     """
 
     def __init__(self):
-        try:
-            self.script_gen = get_script_generator()
-            self.voice_gen = get_voice_generator()
-            self.image_gen = get_image_generator()
-            self.animator = get_animator()
-            self.subtitle_gen = get_subtitle_generator()
-            self.composer = get_composer()
-            self.music_manager = get_background_music_manager()
-            logger.info("Pipeline initialized successfully")
-        except Exception as e:
-            logger.error(f"Failed to initialize pipeline: {e}")
-            raise
+        self.script_gen = get_script_generator()
+        self.animator = get_animator()
+        self.subtitle_gen = get_subtitle_generator()
+        self.composer = get_composer()
+        self.output_dir = OUTPUT_DIR
+        self.temp_clips = []
 
-    def _cleanup_clips(self, clips_to_cleanup: List[any]) -> None:
+    def _cleanup_clips(self, clips_to_cleanup: List[Any]) -> None:
         """
-        FIX: Properly cleanup all video/audio clips to prevent memory leaks.
+        Safely cleanup MoviePy clips to prevent memory leaks.
         
         Args:
-            clips_to_cleanup (List): List of MoviePy clip objects to cleanup
+            clips_to_cleanup (List[Any]): List of video/audio clips to close
         """
         for clip in clips_to_cleanup:
             try:
@@ -58,128 +50,96 @@ class GenerationPipeline:
             except Exception as e:
                 logger.warning(f"Error closing clip: {e}")
 
-    def execute(
+    def run(
         self,
-        product_name: str,
-        image_paths: List[str],
-        progress_callback=None,
+        product_description: str,
+        product_name: str = "Product",
+        voice_gender: str = "female",
+        add_background_music: bool = True,
     ) -> str:
         """
-        Execute complete pipeline from product name and images to final video.
+        Run the complete pipeline.
 
         Args:
+            product_description (str): Description of the product to advertise
             product_name (str): Name of the product
-            image_paths (List[str]): List of product image paths
-            progress_callback (function): Callback for progress updates
+            voice_gender (str): Voice gender for narrator ('male', 'female')
+            add_background_music (bool): Whether to add background music
 
         Returns:
             str: Path to final video file
+
+        Raises:
+            Exception: If any pipeline stage fails
         """
-        # FIX: Track all clips for proper cleanup
-        clips_for_cleanup = []
-        
         try:
-            # Validate inputs
-            if not product_name or not image_paths:
-                raise ValueError("Product name and image paths are required")
+            logger.info(f"Starting pipeline for product: {product_name}")
 
-            # Step 1: Generate Script
-            logger.info("Step 1: Generating dialogue script...")
-            if progress_callback:
-                progress_callback("Generating dialogue script...", 15)
+            # Stage 1: Generate Script
+            logger.info("Stage 1: Generating script...")
+            script = self.script_gen.generate_script(
+                product_name=product_name,
+                product_description=product_description,
+            )
+            logger.info(f"Script generated with {len(script)} lines")
 
-            script_data = self.script_gen.generate_script(product_name)
-            script_lines = script_data["script_lines"]
-            narration_text = script_data["narration_text"]
-            logger.info(f"Script generated with {len(script_lines)} lines")
+            # Stage 2: Generate Audio
+            logger.info("Stage 2: Generating audio narration...")
+            audio_file = self.script_gen.generate_audio(
+                script=script, voice_gender=voice_gender
+            )
+            logger.info(f"Audio generated: {audio_file}")
 
-            # Step 2: Generate Voice Narration
-            logger.info("Step 2: Generating voice narration...")
-            if progress_callback:
-                progress_callback("Generating voice narration...", 30)
+            # Stage 3: Create Animation
+            logger.info("Stage 3: Creating animation frames...")
+            animated_clip = self.animator.create_animation(
+                script=script, audio_file=audio_file
+            )
+            self.temp_clips.append(animated_clip)
+            logger.info("Animation created")
 
-            voice_path = self.voice_gen.generate_voice(narration_text, "narration.mp3")
-            audio_duration = self.voice_gen.get_audio_duration(voice_path)
-            
-            # FIX: Validate audio duration to prevent downstream errors
-            if audio_duration <= 0:
-                raise ValueError(f"Invalid audio duration: {audio_duration}s")
-                
-            logger.info(f"Voice generated: {voice_path} (Duration: {audio_duration:.2f}s)")
+            # Stage 4: Add Subtitles
+            logger.info("Stage 4: Adding subtitles...")
+            subtitle_clips = self.subtitle_gen.create_subtitle_clips(
+                script_lines=script,
+                audio_duration=self.script_gen.get_audio_duration(audio_file),
+            )
+            video_with_subtitles = self.subtitle_gen.overlay_subtitles(
+                animated_clip, subtitle_clips
+            )
+            self.temp_clips.append(video_with_subtitles)
+            logger.info(f"Added {len(subtitle_clips)} subtitles")
 
-            # Step 3: Process Product Images
-            logger.info("Step 3: Processing product images...")
-            if progress_callback:
-                progress_callback("Processing images...", 45)
-
-            prepared_images = self.image_gen.prepare_scene_images(image_paths)
-            if not prepared_images:
-                raise ValueError("No images were successfully prepared")
-            logger.info(f"Processed {len(prepared_images)} images")
-
-            # Step 4: Create Animated Scenes
-            logger.info("Step 4: Creating animated scenes...")
-            if progress_callback:
-                progress_callback("Creating animated scenes...", 60)
-
-            scene_clips = self.animator.create_scene_clips(prepared_images)
-            # FIX: Track clips for cleanup
-            clips_for_cleanup.extend(scene_clips)
-            
-            video_clip = self.animator.compose_clips(scene_clips)
-            clips_for_cleanup.append(video_clip)
-            logger.info(f"Animated {len(scene_clips)} scenes into video")
-
-            # Step 5: Generate Subtitles
-            logger.info("Step 5: Generating subtitles...")
-            if progress_callback:
-                progress_callback("Generating subtitles...", 70)
-
-            subtitle_clips = self.subtitle_gen.create_subtitle_clips(script_lines, audio_duration)
-            video_with_subtitles = self.subtitle_gen.overlay_subtitles(video_clip, subtitle_clips)
-            clips_for_cleanup.append(video_with_subtitles)
-            logger.info(f"Added {len(subtitle_clips)} subtitle clips")
-
-            # Step 6: Add Background Music
-            logger.info("Step 6: Adding background music...")
-            if progress_callback:
-                progress_callback("Adding background music...", 80)
-
-            music_path = self.music_manager.get_music_path("cinematic")
+            # Stage 5: Compose Final Video
+            logger.info("Stage 5: Composing final video with audio...")
+            background_music = (
+                AUDIO_CONFIG.get("background_music_path") if add_background_music else None
+            )
             final_video = self.composer.compose_with_audio(
-                video_with_subtitles,
-                voice_path,
-                music_path,
+                video_with_subtitles, audio_file, background_music
             )
-            clips_for_cleanup.append(final_video)
-            logger.info("Audio mixed with narration")
+            self.temp_clips.append(final_video)
+            logger.info("Audio composition complete")
 
-            # Step 7: Export Final Video
-            logger.info("Step 7: Exporting final video...")
-            if progress_callback:
-                progress_callback("Exporting final video...", 90)
-
-            output_path = self.composer.export_video(
+            # Stage 6: Export
+            logger.info("Stage 6: Exporting final video...")
+            output_file = self.composer.export_video(
                 final_video,
-                output_filename="final_video.mp4",
-                verbose=False,
-                progress_bar=True,
+                output_filename=f"{product_name.replace(' ', '_')}_commercial.mp4",
             )
+            logger.info(f"Pipeline completed successfully: {output_file}")
 
-            logger.info(f"Pipeline completed successfully! Output: {output_path}")
-            if progress_callback:
-                progress_callback("Reel generation completed!", 100)
-
-            return output_path
+            return output_file
 
         except Exception as e:
-            logger.error(f"Pipeline execution failed: {str(e)}")
+            logger.error(f"Pipeline failed: {str(e)}")
             raise
+
         finally:
-            # FIX: Always cleanup clips to prevent memory leaks
-            logger.info(f"Cleaning up {len(clips_for_cleanup)} clips from memory...")
-            self._cleanup_clips(clips_for_cleanup)
-            logger.info("Pipeline cleanup completed")
+            # Cleanup all temporary clips
+            logger.info("Cleaning up temporary clips...")
+            self._cleanup_clips(self.temp_clips)
+            self.temp_clips = []
 
 
 def get_pipeline() -> GenerationPipeline:
