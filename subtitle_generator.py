@@ -5,7 +5,7 @@ MoviePy 1.0.3 Compatible
 """
 
 import logging
-from typing import List, Dict
+from typing import Any, Dict, List
 from pathlib import Path
 import sys
 
@@ -31,7 +31,7 @@ class SubtitleGenerator:
         self.subtitle_color = ANIMATION_CONFIG["subtitle_color"]
         self.min_subtitle_duration = 0.5  # Minimum duration to ensure visibility
 
-    def _create_text_clip_safe(self, text: str, duration: float, start_time: float) -> any:
+    def _create_text_clip_safe(self, text: str, duration: float, start_time: float) -> Any:
         """
         Safely create a TextClip with MoviePy 1.0.3.
         Handles font availability gracefully.
@@ -84,7 +84,7 @@ class SubtitleGenerator:
 
     def create_subtitle_clips(
         self, script_lines: List[Dict], audio_duration: float
-    ) -> List[any]:
+    ) -> List[Any]:
         """
         Create subtitle clips synchronized with narration.
 
@@ -145,7 +145,7 @@ class SubtitleGenerator:
             logger.error(f"Error creating subtitle clips: {str(e)}")
             raise
 
-    def overlay_subtitles(self, video_clip: any, subtitle_clips: List[any]) -> any:
+    def overlay_subtitles(self, video_clip: Any, subtitle_clips: List[Any]) -> Any:
         """
         Overlay subtitles on video.
 

@@ -7,6 +7,7 @@ Windows Compatible Implementation
 
 import logging
 from pathlib import Path
+from typing import Any
 import sys
 
 # Add current directory to path for relative imports
@@ -38,10 +39,10 @@ class Composer:
 
     def compose_with_audio(
         self,
-        video_clip: any,
+        video_clip: Any,
         voice_audio_path: str,
         background_music_path: str = None,
-    ) -> any:
+    ) -> Any:
         """
         Compose video with voice narration and optional background music.
 
@@ -120,7 +121,7 @@ class Composer:
 
     def export_video(
         self,
-        video_clip: any,
+        video_clip: Any,
         output_filename: str = "final_video.mp4",
         verbose: bool = False,
         progress_bar: bool = True,
