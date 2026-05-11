@@ -7,6 +7,7 @@ Windows Compatible Implementation
 
 import logging
 from pathlib import Path
+from typing import Any
 import sys
 
 # Add current directory to path for relative imports
@@ -38,52 +39,54 @@ class Composer:
 
     def compose_with_audio(
         self,
-        video_clip: any,
+        video_clip: Any,
         voice_audio_path: str,
         background_music_path: str = None,
-    ) -> any:
+    ) -> Any:
         """
         Compose video with voice narration and optional background music.
 
         Args:
-            video_clip (VideoClip): Main video clip
+            video_clip: Main video clip
             voice_audio_path (str): Path to voice narration audio
             background_music_path (str): Path to background music (optional)
 
         Returns:
             VideoClip: Video with composed audio
         """
+        # NOTE: Audio clips (voice_audio, background_audio) are intentionally NOT
+        # closed here.  MoviePy uses lazy/streaming reads – closing them before
+        # write_videofile() would produce silent or broken output.  They are
+        # released naturally when write_videofile() finishes rendering audio.
+        background_audio = None
         try:
             # Load voice audio
             voice_audio = AudioFileClip(voice_audio_path)
-            
-            # FIX: Safely extend video duration without black frames
+
+            # Safely extend video duration without black frames
             if video_clip.duration < voice_audio.duration:
                 logger.warning(
                     f"Video duration ({video_clip.duration}s) is less than audio ({voice_audio.duration}s). "
                     f"Extending video by looping final frame."
                 )
-                # Loop the final frame instead of stretching
-                from moviepy.video.io.VideoFileClip import VideoFileClip
                 try:
-                    # Create extended clip by repeating/looping
                     final_frame = video_clip.get_frame(video_clip.duration - 0.1)
-                    from moviepy.editor import ImageClip
+                    from moviepy.editor import ImageClip, concatenate_videoclips
                     extend_clip = ImageClip(final_frame).set_duration(
                         voice_audio.duration - video_clip.duration
                     )
-                    from moviepy.editor import concatenate_videoclips
                     video_clip = concatenate_videoclips([video_clip, extend_clip])
                 except Exception as e:
                     logger.warning(f"Could not loop final frame: {e}. Using set_duration instead.")
-                    # Fallback: just set duration
                     video_clip = video_clip.set_duration(voice_audio.duration)
 
             # Create audio composition
             if background_music_path and Path(background_music_path).exists():
                 try:
                     background_audio = AudioFileClip(background_music_path)
-                    background_audio = background_audio.loop(n=int(voice_audio.duration / background_audio.duration) + 1)
+                    background_audio = background_audio.loop(
+                        n=int(voice_audio.duration / background_audio.duration) + 1
+                    )
                     background_audio = background_audio.set_duration(voice_audio.duration)
 
                     # Scale background music volume
@@ -106,21 +109,20 @@ class Composer:
             return final_video
 
         except Exception as e:
-            logger.error(f"Error composing video with audio: {str(e)}")
-            raise
-        finally:
-            # FIX: Always cleanup audio resources to prevent memory leaks
+            # Only release audio resources on error (they are unused in this path)
             try:
                 if 'voice_audio' in locals() and voice_audio is not None:
                     voice_audio.close()
-                if 'background_audio' in locals() and background_audio is not None:
+                if background_audio is not None:
                     background_audio.close()
             except Exception as cleanup_error:
-                logger.warning(f"Error closing audio clips: {cleanup_error}")
+                logger.warning(f"Error closing audio clips on failure: {cleanup_error}")
+            logger.error(f"Error composing video with audio: {str(e)}")
+            raise
 
     def export_video(
         self,
-        video_clip: any,
+        video_clip: Any,
         output_filename: str = "final_video.mp4",
         verbose: bool = False,
         progress_bar: bool = True,
@@ -129,7 +131,7 @@ class Composer:
         Export final video to MP4 file.
 
         Args:
-            video_clip (VideoClip): Final video clip
+            video_clip: Final video clip
             output_filename (str): Output filename
             verbose (bool): Show verbose output
             progress_bar (bool): Show progress bar
@@ -146,26 +148,29 @@ class Composer:
 
             logger.info(f"Exporting video to: {output_path}")
 
-            # Export video with Windows-compatible parameters
+            # MoviePy 1.0.3 uses 'logger' parameter (not 'progress_bar')
+            # logger='bar' shows tqdm progress; logger=None silences it
+            moviepy_logger = "bar" if progress_bar else None
+
             video_clip.write_videofile(
                 str(output_path),
                 fps=self.fps,
                 codec=self.codec,
                 audio_codec=self.audio_codec,
                 verbose=verbose,
-                progress_bar=progress_bar,
+                logger=moviepy_logger,
             )
 
-            # FIX: Validate that file was actually created
+            # Validate that file was actually created
             if not output_path.exists():
                 raise FileNotFoundError(
                     f"Video export failed: Output file not created at {output_path}"
                 )
-            
+
             file_size_mb = output_path.stat().st_size / (1024 * 1024)
-            if file_size_mb < 1:
+            if file_size_mb < 0.01:
                 raise ValueError(
-                    f"Video export created invalid file: Size is only {file_size_mb:.2f} MB"
+                    f"Video export created invalid file: Size is only {file_size_mb:.3f} MB"
                 )
 
             logger.info(f"Video exported successfully: {output_path} ({file_size_mb:.2f} MB)")
@@ -182,7 +187,7 @@ class Composer:
                     logger.warning(f"Could not clean up failed export: {cleanup_error}")
             raise
         finally:
-            # FIX: Always cleanup video clip resource
+            # Always close the video clip to release ffmpeg processes
             try:
                 if video_clip is not None:
                     video_clip.close()

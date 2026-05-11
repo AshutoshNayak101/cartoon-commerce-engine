@@ -1,7 +1,7 @@
 """
 Main Streamlit Application
 AI Cartoon Commerce Studio Lite - Instagram Reel Generator
-Windows Compatible Implementation
+Linux / Streamlit Community Cloud Compatible
 
 Run with: python -m streamlit run app.py
 """
@@ -66,6 +66,60 @@ st.markdown(
 )
 
 
+# ---------------------------------------------------------------------------
+# Helper: friendly error messages
+# ---------------------------------------------------------------------------
+
+def _friendly_error(exc: Exception) -> str:
+    """
+    Convert a raw exception into a user-friendly message without leaking
+    internal details or stack traces to the Streamlit UI.
+    """
+    msg = str(exc)
+    if isinstance(exc, ConnectionError) or "internet" in msg.lower() or "gTTS" in msg or "translate.google" in msg:
+        return (
+            "🌐 Voice narration requires an internet connection to Google Text-to-Speech. "
+            "Please check your connection and try again."
+        )
+    if isinstance(exc, FileNotFoundError) or "Output file not created" in msg:
+        return "📁 Video export failed — the output file could not be created. Check disk space and permissions."
+    if "ffmpeg" in msg.lower() or "codec" in msg.lower():
+        return "🎬 Video encoding failed. FFmpeg may not be available or the codec is unsupported."
+    if "No images were successfully prepared" in msg:
+        return "🖼️ None of the uploaded images could be processed. Please upload valid JPG or PNG files."
+    if "Invalid audio duration" in msg:
+        return "🎙️ Voice narration could not be generated. Please try again."
+    # Generic fallback — show only the first sentence to avoid leaking internals
+    first_sentence = msg.split(".")[0].strip()
+    return f"❌ Generation failed: {first_sentence}."
+
+
+# ---------------------------------------------------------------------------
+# Startup: FFmpeg preflight check
+# ---------------------------------------------------------------------------
+
+def _check_ffmpeg() -> tuple:
+    """
+    Return (available: bool, path_or_error: str).
+    Checks imageio_ffmpeg first (bundled), then system PATH.
+    """
+    try:
+        import imageio_ffmpeg
+        path = imageio_ffmpeg.get_ffmpeg_exe()
+        return True, path
+    except Exception:
+        pass
+    import shutil
+    sys_ffmpeg = shutil.which("ffmpeg")
+    if sys_ffmpeg:
+        return True, sys_ffmpeg
+    return False, "ffmpeg not found via imageio-ffmpeg or system PATH"
+
+
+# ---------------------------------------------------------------------------
+# Session state
+# ---------------------------------------------------------------------------
+
 def initialize_session_state():
     """
     Initialize session state variables.
@@ -74,13 +128,20 @@ def initialize_session_state():
         try:
             st.session_state.pipeline = get_pipeline()
         except Exception as e:
-            logger.error(f"Failed to initialize pipeline: {e}")
-            st.error(f"Failed to initialize pipeline: {e}")
+            logger.error(f"Failed to initialize pipeline: {e}", exc_info=True)
+            st.error(
+                "⚙️ Failed to initialize the generation pipeline. "
+                "Please refresh the page. If the problem persists, check the server logs."
+            )
             return False
     if "output_video_path" not in st.session_state:
         st.session_state.output_video_path = None
     return True
 
+
+# ---------------------------------------------------------------------------
+# Input validation
+# ---------------------------------------------------------------------------
 
 def validate_inputs(product_name: str, uploaded_files: list) -> tuple:
     """
@@ -107,6 +168,10 @@ def validate_inputs(product_name: str, uploaded_files: list) -> tuple:
     return True, "✅ Inputs validated"
 
 
+# ---------------------------------------------------------------------------
+# File I/O
+# ---------------------------------------------------------------------------
+
 def save_uploaded_files(uploaded_files: list) -> list:
     """
     Save uploaded files to temporary directory.
@@ -128,14 +193,16 @@ def save_uploaded_files(uploaded_files: list) -> list:
         return saved_paths
 
     except Exception as e:
-        logger.error(f"Error saving uploaded files: {str(e)}")
+        logger.error(f"Error saving uploaded files: {str(e)}", exc_info=True)
         raise
 
 
+# ---------------------------------------------------------------------------
+# UI helpers
+# ---------------------------------------------------------------------------
+
 def display_header():
-    """
-    Display application header.
-    """
+    """Display application header."""
     st.markdown(
         '<p class="title-text">🎬 AI Cartoon Commerce Studio Lite</p>',
         unsafe_allow_html=True,
@@ -148,9 +215,7 @@ def display_header():
 
 
 def display_input_section():
-    """
-    Display product input section.
-    """
+    """Display product input section."""
     st.subheader("📦 Product Information")
 
     col1, col2 = st.columns([1, 1])
@@ -174,9 +239,7 @@ def display_input_section():
 
 
 def display_generation_controls():
-    """
-    Display generation control buttons.
-    """
+    """Display generation control buttons."""
     st.subheader("⚙️ Generation Controls")
 
     col1, col2, col3 = st.columns([1, 1, 1])
@@ -192,21 +255,18 @@ def display_generation_controls():
 
 
 def display_output_section(video_path: str = None):
-    """
-    Display output section with video preview.
-    """
+    """Display output section with video preview."""
     st.subheader("📹 Generated Reel")
 
     if video_path and Path(video_path).exists():
-        # Display video
         st.success("✅ Reel generated successfully!")
 
         with st.expander("📺 Watch Preview", expanded=True):
             try:
                 st.video(video_path)
             except Exception as e:
-                logger.error(f"Error displaying video: {e}")
-                st.error(f"Error displaying video preview: {e}")
+                logger.error(f"Error displaying video: {e}", exc_info=True)
+                st.warning("Could not display video preview inline. Use the download button below.")
 
         # Download button
         try:
@@ -219,8 +279,8 @@ def display_output_section(video_path: str = None):
                     use_container_width=True,
                 )
         except Exception as e:
-            logger.error(f"Error creating download button: {e}")
-            st.error(f"Error creating download: {e}")
+            logger.error(f"Error creating download button: {e}", exc_info=True)
+            st.error("Could not create download link. Please try refreshing the page.")
 
         # Video info
         try:
@@ -232,13 +292,15 @@ def display_output_section(video_path: str = None):
         st.info("🎬 Generated reels will appear here. Start by uploading product images!")
 
 
+# ---------------------------------------------------------------------------
+# Main
+# ---------------------------------------------------------------------------
+
 def main():
-    """
-    Main application logic.
-    """
+    """Main application logic."""
     # Initialize session state
     if not initialize_session_state():
-        st.error("Failed to initialize application. Please refresh the page.")
+        st.stop()
         return
 
     # Display header
@@ -270,8 +332,8 @@ def main():
                     saved_image_paths = save_uploaded_files(uploaded_files)
                     st.success(f"Saved {len(saved_image_paths)} images")
                 except Exception as e:
-                    st.error(f"Error saving files: {e}")
-                    logger.error(f"File save error: {e}")
+                    logger.error(f"File save error: {e}", exc_info=True)
+                    st.error("❌ Could not save the uploaded files. Check server disk space and permissions.")
                     return
 
             # Create progress placeholder
@@ -279,11 +341,12 @@ def main():
             status_placeholder = st.empty()
 
             def progress_callback(message: str, progress: int):
-                """
-                Callback function for pipeline progress updates.
-                """
-                progress_placeholder.progress(progress / 100)
-                status_placeholder.info(f"⏳ {message}")
+                """Callback function for pipeline progress updates."""
+                try:
+                    progress_placeholder.progress(progress / 100)
+                    status_placeholder.info(f"⏳ {message}")
+                except Exception:
+                    pass  # never let callback errors abort the pipeline
 
             # Execute pipeline
             try:
@@ -299,8 +362,10 @@ def main():
                 st.rerun()
 
             except Exception as e:
-                st.error(f"❌ Error during generation: {str(e)}")
-                logger.error(f"Pipeline error: {str(e)}")
+                logger.error(f"Pipeline error: {e}", exc_info=True)
+                progress_placeholder.empty()
+                status_placeholder.empty()
+                st.error(_friendly_error(e))
 
     st.divider()
 
@@ -333,9 +398,18 @@ def main():
             - **Backend**: Python
             - **Video**: MoviePy 1.0.3
             - **Voice**: gTTS
-            - **Images**: Pillow 9.5.0+
+            - **Images**: Pillow
             """
         )
+
+        st.divider()
+
+        # FFmpeg preflight status
+        ffmpeg_ok, ffmpeg_info = _check_ffmpeg()
+        if ffmpeg_ok:
+            st.success("✅ FFmpeg available")
+        else:
+            st.error(f"❌ FFmpeg not found — video export will fail. ({ffmpeg_info})")
 
         st.divider()
         st.caption("🚀 AI Cartoon Commerce Studio Lite v1.0")

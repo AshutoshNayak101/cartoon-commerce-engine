@@ -6,8 +6,9 @@ Windows Compatible - MoviePy 1.0.3
 """
 
 import logging
+import shutil
 from pathlib import Path
-from typing import Dict, List
+from typing import Any, Dict, List
 import sys
 
 sys.path.insert(0, str(Path(__file__).parent))
@@ -19,6 +20,7 @@ from animator import get_animator
 from subtitle_generator import get_subtitle_generator
 from composer import get_composer
 from background_music import get_background_music_manager
+from config import UPLOADS_DIR, SCENES_DIR, VOICES_DIR
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -44,10 +46,10 @@ class GenerationPipeline:
             logger.error(f"Failed to initialize pipeline: {e}")
             raise
 
-    def _cleanup_clips(self, clips_to_cleanup: List[any]) -> None:
+    def _cleanup_clips(self, clips_to_cleanup: List[Any]) -> None:
         """
-        FIX: Properly cleanup all video/audio clips to prevent memory leaks.
-        
+        Properly cleanup all video/audio clips to prevent memory leaks.
+
         Args:
             clips_to_cleanup (List): List of MoviePy clip objects to cleanup
         """
@@ -57,6 +59,24 @@ class GenerationPipeline:
                     clip.close()
             except Exception as e:
                 logger.warning(f"Error closing clip: {e}")
+
+    def _cleanup_temp_files(self) -> None:
+        """
+        Remove temporary files created during pipeline execution.
+        Clears uploads, processed scenes, and voice files to free disk space.
+        The output video is kept.
+        """
+        for temp_dir in (UPLOADS_DIR, SCENES_DIR, VOICES_DIR):
+            try:
+                for f in temp_dir.iterdir():
+                    try:
+                        if f.is_file():
+                            f.unlink()
+                    except Exception as e:
+                        logger.warning(f"Could not delete temp file {f}: {e}")
+                logger.info(f"Cleaned up temp directory: {temp_dir}")
+            except Exception as e:
+                logger.warning(f"Could not clean temp directory {temp_dir}: {e}")
 
     def execute(
         self,
@@ -176,9 +196,11 @@ class GenerationPipeline:
             logger.error(f"Pipeline execution failed: {str(e)}")
             raise
         finally:
-            # FIX: Always cleanup clips to prevent memory leaks
+            # Always cleanup clips to prevent memory leaks
             logger.info(f"Cleaning up {len(clips_for_cleanup)} clips from memory...")
             self._cleanup_clips(clips_for_cleanup)
+            # Remove temporary files to free disk space
+            self._cleanup_temp_files()
             logger.info("Pipeline cleanup completed")
 
 
