@@ -1,6 +1,7 @@
 [client]
 showErrorDetails = false
 showWarningOnDirectExecution = false
+maxUploadSize = 200
 
 [logger]
 level = "info"
@@ -18,9 +19,6 @@ backgroundColor = "#0e1117"
 secondaryBackgroundColor = "#161b22"
 textColor = "#c9d1d9"
 font = "sans serif"
-
-[client]
-maxUploadSize = 200
 
 [browser]
 gatherUsageStats = false
