@@ -41,6 +41,8 @@ ANIMATION_CONFIG = {
     "transition_duration": 0.5,
     "subtitle_font_size": 60,
     "subtitle_color": (255, 255, 255),
+    "background_color": (14, 17, 23),
+    "text_color": (201, 209, 217),
 }
 
 # Dialogue Configuration
