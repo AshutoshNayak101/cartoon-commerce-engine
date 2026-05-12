@@ -95,7 +95,7 @@ class GenerationPipeline:
         Returns:
             str: Path to final video file
         """
-        # FIX: Track all clips for proper cleanup
+        # NOTE: Track all clips for proper cleanup
         clips_for_cleanup = []
         
         try:
@@ -121,7 +121,7 @@ class GenerationPipeline:
             voice_path = self.voice_gen.generate_voice(narration_text, "narration.mp3")
             audio_duration = self.voice_gen.get_audio_duration(voice_path)
             
-            # FIX: Validate audio duration to prevent downstream errors
+            # NOTE: Validate audio duration to prevent downstream errors
             if audio_duration <= 0:
                 raise ValueError(f"Invalid audio duration: {audio_duration}s")
                 
@@ -143,7 +143,7 @@ class GenerationPipeline:
                 progress_callback("Creating animated scenes...", 60)
 
             scene_clips = self.animator.create_scene_clips(prepared_images)
-            # FIX: Track clips for cleanup
+            # NOTE: Track clips for cleanup
             clips_for_cleanup.extend(scene_clips)
             
             video_clip = self.animator.compose_clips(scene_clips)

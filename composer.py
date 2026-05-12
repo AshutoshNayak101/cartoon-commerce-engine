@@ -168,7 +168,7 @@ class Composer:
                 )
 
             file_size_mb = output_path.stat().st_size / (1024 * 1024)
-            if file_size_mb < 0.01:
+            if file_size_mb < 0.1:
                 raise ValueError(
                     f"Video export created invalid file: Size is only {file_size_mb:.3f} MB"
                 )

@@ -14,9 +14,9 @@ import sys
 sys.path.insert(0, str(Path(__file__).parent))
 
 # ---------------------------------------------------------------------------
-# Pillow 10.x compatibility shim for MoviePy 1.0.3
+# Pillow 10.x compatibility shim for MoviePy 1.0.3.
 # MoviePy's resize.py uses Image.ANTIALIAS which was removed in Pillow 10.0.
-# Aliasing it to Image.LANCZOS restores the expected behaviour.
+# This mutates the PIL.Image module so MoviePy's import sees the alias.
 # ---------------------------------------------------------------------------
 from PIL import Image as _PILImage
 if not hasattr(_PILImage, "ANTIALIAS"):

@@ -76,7 +76,12 @@ def _friendly_error(exc: Exception) -> str:
     internal details or stack traces to the Streamlit UI.
     """
     msg = str(exc)
-    if isinstance(exc, ConnectionError) or "internet" in msg.lower() or "gTTS" in msg or "translate.google" in msg:
+    try:
+        from gtts.tts import gTTSError
+    except Exception:
+        gTTSError = None
+
+    if isinstance(exc, ConnectionError) or (gTTSError is not None and isinstance(exc, gTTSError)):
         return (
             "🌐 Voice narration requires an internet connection to Google Text-to-Speech. "
             "Please check your connection and try again."
