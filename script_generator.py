@@ -6,7 +6,7 @@ Windows Compatible Implementation
 """
 
 import random
-from typing import List, Dict
+from typing import List, Dict, Any
 import logging
 
 logging.basicConfig(level=logging.INFO)
@@ -55,12 +55,13 @@ class ScriptGenerator:
             ],
         }
 
-    def generate_script(self, product_name: str) -> Dict[str, any]:
+    def generate_script(self, product_name: str, product_description: str = "") -> Dict[str, Any]:
         """
         Generate a complete product showcase script.
 
         Args:
             product_name (str): Name of the product to showcase
+            product_description (str): Description of product (optional)
 
         Returns:
             Dict containing script_lines and narration_text
@@ -119,6 +120,58 @@ class ScriptGenerator:
         except Exception as e:
             logger.error(f"Error generating script: {str(e)}")
             raise
+
+    def generate_audio(self, script: Dict[str, Any], voice_gender: str = "female") -> str:
+        """
+        Generate audio from script narration.
+        
+        Args:
+            script (Dict): Script dictionary with narration_text
+            voice_gender (str): Gender for voice (female/male)
+            
+        Returns:
+            str: Path to generated audio file
+        """
+        try:
+            from voice_generator import get_voice_generator
+            
+            voice_gen = get_voice_generator()
+            narration_text = script.get("narration_text", "")
+            
+            if not narration_text:
+                raise ValueError("No narration text in script")
+            
+            audio_file = voice_gen.generate_voice(
+                text=narration_text,
+                filename="narration.mp3"
+            )
+            return audio_file
+            
+        except Exception as e:
+            logger.error(f"Error generating audio: {str(e)}")
+            raise
+
+    def get_audio_duration(self, filepath: str) -> float:
+        """
+        Get duration of audio file.
+        
+        Args:
+            filepath (str): Path to audio file
+            
+        Returns:
+            float: Duration in seconds
+        """
+        try:
+            from moviepy.editor import AudioFileClip
+            
+            audio = AudioFileClip(str(filepath))
+            duration = audio.duration
+            audio.close()
+            return duration
+            
+        except Exception as e:
+            logger.error(f"Error getting audio duration: {str(e)}")
+            return 5.0  # Default fallback
 
 
 def get_script_generator() -> ScriptGenerator:
