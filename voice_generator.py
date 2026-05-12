@@ -63,7 +63,7 @@ class VoiceGenerator:
         )
 
         last_error = None
-        for attempt in range(1, _GTTS_MAX_RETRIES + 1):
+        for attempt in range(_GTTS_MAX_RETRIES):
             try:
                 tts.save(str(output_path))
                 logger.info(f"Voice generated successfully: {output_path}")
@@ -71,9 +71,9 @@ class VoiceGenerator:
             except Exception as e:
                 last_error = e
                 logger.warning(
-                    f"gTTS attempt {attempt}/{_GTTS_MAX_RETRIES} failed: {e}"
+                    f"gTTS attempt {attempt + 1}/{_GTTS_MAX_RETRIES} failed: {e}"
                 )
-                if attempt < _GTTS_MAX_RETRIES:
+                if attempt < _GTTS_MAX_RETRIES - 1:
                     time.sleep(_GTTS_RETRY_DELAY)
 
         # All retries exhausted

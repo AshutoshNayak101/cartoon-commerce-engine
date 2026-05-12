@@ -24,6 +24,8 @@ from config import VIDEO_CONFIG, AUDIO_CONFIG, OUTPUT_DIR
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+MIN_VALID_VIDEO_SIZE_MB = 0.1
+
 
 class Composer:
     """
@@ -54,10 +56,9 @@ class Composer:
         Returns:
             VideoClip: Video with composed audio
         """
-        # NOTE: Audio clips (voice_audio, background_audio) are intentionally NOT
-        # closed here.  MoviePy uses lazy/streaming reads – closing them before
-        # write_videofile() would produce silent or broken output.  They are
-        # released naturally when write_videofile() finishes rendering audio.
+        # NOTE: Audio clips are not closed here to prevent silent output.
+        # MoviePy's lazy streaming requires them to remain open until
+        # write_videofile() completes rendering.
         background_audio = None
         try:
             # Load voice audio
@@ -168,7 +169,7 @@ class Composer:
                 )
 
             file_size_mb = output_path.stat().st_size / (1024 * 1024)
-            if file_size_mb < 0.1:
+            if file_size_mb < MIN_VALID_VIDEO_SIZE_MB:
                 raise ValueError(
                     f"Video export created invalid file: Size is only {file_size_mb:.3f} MB"
                 )

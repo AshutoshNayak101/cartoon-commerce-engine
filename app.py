@@ -189,7 +189,10 @@ def save_uploaded_files(uploaded_files: list) -> list:
         UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
 
         for idx, uploaded_file in enumerate(uploaded_files):
-            file_path = UPLOADS_DIR / f"product_{idx}.{uploaded_file.name.split('.')[-1]}"
+            ext = uploaded_file.name.split(".")[-1].lower()
+            if ext not in {"jpg", "jpeg", "png"}:
+                raise ValueError(f"Invalid file type: {ext}")
+            file_path = UPLOADS_DIR / f"product_{idx}.{ext}"
             with open(file_path, "wb") as f:
                 f.write(uploaded_file.getbuffer())
             saved_paths.append(str(file_path))
@@ -350,8 +353,8 @@ def main():
                 try:
                     progress_placeholder.progress(progress / 100)
                     status_placeholder.info(f"⏳ {message}")
-                except Exception:
-                    pass  # never let callback errors abort the pipeline
+                except Exception as callback_error:
+                    logger.warning(f"Progress callback failed: {callback_error}")
 
             # Execute pipeline
             try:
