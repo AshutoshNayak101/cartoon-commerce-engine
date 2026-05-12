@@ -15,8 +15,12 @@ import os
 
 sys.path.insert(0, str(Path(__file__).parent))
 
-from pipeline import get_pipeline
-from config import UPLOADS_DIR
+try:
+    from pipeline import get_pipeline
+    from config import UPLOADS_DIR
+except Exception as e:
+    st.error(f"❌ Critical Import Error: {str(e)}")
+    st.stop()
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -101,8 +105,8 @@ def initialize_session_state():
             st.session_state.pipeline = get_pipeline()
             logger.info("Pipeline initialized successfully")
         except Exception as e:
-            logger.error(f"Failed to initialize pipeline: {e}")
-            st.error(f"❌ Failed to initialize pipeline: {e}")
+            logger.error(f"Failed to initialize pipeline: {e}", exc_info=True)
+            st.error(f"❌ Failed to initialize pipeline: {str(e)}")
             return False
     if "output_video_path" not in st.session_state:
         st.session_state.output_video_path = None
@@ -366,8 +370,11 @@ def main():
                 """
                 Callback function for pipeline progress updates.
                 """
-                progress_placeholder.progress(progress / 100)
-                status_placeholder.info(f"⏳ {message}")
+                try:
+                    progress_placeholder.progress(min(progress / 100, 0.99))
+                    status_placeholder.info(f"⏳ {message}")
+                except Exception as e:
+                    logger.warning(f"Progress callback error: {e}")
 
             # Execute pipeline
             try:
