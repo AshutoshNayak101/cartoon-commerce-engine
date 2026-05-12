@@ -1,7 +1,7 @@
 """
 Composer Module
 Handles final video composition with audio, music, and export.
-Uses MoviePy 1.0.3 syntax.
+Uses MoviePy 1.0.3 syntax - WITHOUT progress_bar parameter
 Windows Compatible Implementation
 """
 
@@ -14,10 +14,10 @@ from typing import Any
 sys.path.insert(0, str(Path(__file__).parent))
 
 from moviepy.editor import (
-    VideoFileClip,
     AudioFileClip,
-    concatenate_audioclips,
+    concatenate_videoclips,
     CompositeAudioClip,
+    ImageClip,
 )
 from config import VIDEO_CONFIG, AUDIO_CONFIG, OUTPUT_DIR
 
@@ -28,6 +28,7 @@ logger = logging.getLogger(__name__)
 class Composer:
     """
     Composes final video with audio mixing and export.
+    MoviePy 1.0.3 compatible - NO progress_bar parameter
     """
 
     def __init__(self):
@@ -58,26 +59,21 @@ class Composer:
             # Load voice audio
             voice_audio = AudioFileClip(voice_audio_path)
             
-            # FIX: Safely extend video duration without black frames
+            # Extend video duration to match audio if needed
             if video_clip.duration < voice_audio.duration:
                 logger.warning(
-                    f"Video duration ({video_clip.duration}s) is less than audio ({voice_audio.duration}s). "
-                    f"Extending video by looping final frame."
+                    f"Video duration ({video_clip.duration}s) < audio ({voice_audio.duration}s). "
+                    f"Extending video..."
                 )
-                # Loop the final frame instead of stretching
-                from moviepy.video.io.VideoFileClip import VideoFileClip
                 try:
-                    # Create extended clip by repeating/looping
+                    # Create extended clip by repeating final frame
                     final_frame = video_clip.get_frame(video_clip.duration - 0.1)
-                    from moviepy.editor import ImageClip
                     extend_clip = ImageClip(final_frame).set_duration(
                         voice_audio.duration - video_clip.duration
                     )
-                    from moviepy.editor import concatenate_videoclips
                     video_clip = concatenate_videoclips([video_clip, extend_clip])
                 except Exception as e:
-                    logger.warning(f"Could not loop final frame: {e}. Using set_duration instead.")
-                    # Fallback: just set duration
+                    logger.warning(f"Could not extend video: {e}. Using set_duration.")
                     video_clip = video_clip.set_duration(voice_audio.duration)
 
             # Create audio composition
@@ -94,10 +90,10 @@ class Composer:
                     # Composite audio
                     final_audio = CompositeAudioClip([voice_audio, background_audio])
                 except Exception as music_error:
-                    logger.warning(f"Background music loading failed: {music_error}. Using voice only.")
+                    logger.warning(f"Background music failed: {music_error}. Using voice only.")
                     final_audio = voice_audio
             else:
-                logger.info("No background music file provided. Using voice only.")
+                logger.info("No background music. Using voice only.")
                 final_audio = voice_audio
 
             # Set audio to video
@@ -110,30 +106,29 @@ class Composer:
             logger.error(f"Error composing video with audio: {str(e)}")
             raise
         finally:
-            # FIX: Always cleanup audio resources to prevent memory leaks
+            # Always cleanup audio resources
             try:
                 if 'voice_audio' in locals() and voice_audio is not None:
                     voice_audio.close()
                 if 'background_audio' in locals() and background_audio is not None:
                     background_audio.close()
-            except Exception as cleanup_error:
-                logger.warning(f"Error closing audio clips: {cleanup_error}")
+            except Exception as e:
+                logger.warning(f"Error closing audio: {e}")
 
     def export_video(
         self,
         video_clip: Any,
         output_filename: str = "final_video.mp4",
         verbose: bool = False,
-        progress_bar: bool = True,
     ) -> str:
         """
         Export final video to MP4 file.
+        MoviePy 1.0.3 compatible - NO progress_bar parameter
 
         Args:
             video_clip (VideoClip): Final video clip
             output_filename (str): Output filename
             verbose (bool): Show verbose output
-            progress_bar (bool): Show progress bar
 
         Returns:
             str: Path to exported video
@@ -147,17 +142,16 @@ class Composer:
 
             logger.info(f"Exporting video to: {output_path}")
 
-            # Export video with Windows-compatible parameters
+            # Export video WITHOUT progress_bar parameter (MoviePy 1.0.3 doesn't support it)
             video_clip.write_videofile(
                 str(output_path),
                 fps=self.fps,
                 codec=self.codec,
                 audio_codec=self.audio_codec,
                 verbose=verbose,
-                progress_bar=progress_bar,
             )
 
-            # FIX: Validate that file was actually created
+            # Validate that file was created
             if not output_path.exists():
                 raise FileNotFoundError(
                     f"Video export failed: Output file not created at {output_path}"
@@ -179,16 +173,16 @@ class Composer:
                 try:
                     output_path.unlink()
                     logger.info(f"Cleaned up invalid export file: {output_path}")
-                except Exception as cleanup_error:
-                    logger.warning(f"Could not clean up failed export: {cleanup_error}")
+                except Exception as e:
+                    logger.warning(f"Could not clean up failed export: {e}")
             raise
         finally:
-            # FIX: Always cleanup video clip resource
+            # Always cleanup video clip resource
             try:
                 if video_clip is not None:
                     video_clip.close()
-            except Exception as cleanup_error:
-                logger.warning(f"Error closing video clip: {cleanup_error}")
+            except Exception as e:
+                logger.warning(f"Error closing video clip: {e}")
 
 
 def get_composer() -> Composer:
